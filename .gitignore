@@ -1,0 +1,29 @@
+﻿# Python environments
+.venv/
+.venv-1/
+venv/
+env/
+
+# Python temporary files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Private API keys
+.env
+.env.*
+!.env.example
+.openjarvis/
+free.key
+*.key
+
+# Local databases and logs
+*.db
+*.sqlite3
+*.log
+
+# IDE and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
