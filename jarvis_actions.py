@@ -1,8 +1,8 @@
 
 """
 jarvis_actions.py - Windows Jarvis automation
-Spotify, YouTube, WhatsApp, apps, websites, volume,
-date/time and existing utilities.
+Spotify desktop, YouTube, WhatsApp, apps, websites,
+volume, date/time and existing utilities.
 """
 
 import subprocess
@@ -47,21 +47,18 @@ ALIASES = {
     "settings": "ms-settings:",
     "system settings": "ms-settings:",
     "terminal": "wt",
-    "spotify": "spotify:",
 }
 
-# Your favourite album: BTS - ARIRANG
 FAVOURITE_ALBUM_URL = (
     "https://open.spotify.com/album/3ukkRHDHbN8tNRPKsGZR1h"
 )
 
-
-# ============================================================
-# WHATSAPP PENDING MESSAGE
-# ============================================================
-
 _PENDING_WHATSAPP = None
 
+
+# ============================================================
+# GENERAL APPLICATION LAUNCHING
+# ============================================================
 
 def _open(args):
     """Open a website or Windows application."""
@@ -117,6 +114,7 @@ def find_app(name):
     name = ALIASES.get(name, name)
 
     executable = shutil.which(name)
+
     if executable:
         return executable
 
@@ -132,12 +130,116 @@ def find_app(name):
     return None
 
 
+# ============================================================
+# SPOTIFY DESKTOP APPLICATION
+# ============================================================
+
+def find_spotify_desktop():
+    """Find the installed Spotify desktop application."""
+
+    # First check whether Spotify is already running.
+    try:
+        window = jarvis_spotify.find_spotify_window()
+
+        if window:
+            return "RUNNING"
+
+    except Exception:
+        pass
+
+    # Search Windows Start Menu shortcuts.
+    apps = _apps()
+
+    for app_name, path in apps.items():
+        if app_name == "spotify" or app_name.startswith("spotify "):
+            return path
+
+    # Check common Windows installation locations.
+    local = os.environ.get("LOCALAPPDATA", "")
+    roaming = os.environ.get("APPDATA", "")
+    program_files = os.environ.get("PROGRAMFILES", "")
+
+    possible_paths = [
+        os.path.join(roaming, "Spotify", "Spotify.exe"),
+        os.path.join(local, "Programs", "Spotify", "Spotify.exe"),
+        os.path.join(local, "Spotify", "Spotify.exe"),
+        os.path.join(program_files, "Spotify", "Spotify.exe"),
+    ]
+
+    for path in possible_paths:
+        if path and os.path.isfile(path):
+            return path
+
+    # Check PATH for Spotify executable.
+    executable = shutil.which("Spotify.exe")
+
+    if executable:
+        return executable
+
+    return None
+
+
+def launch_spotify_desktop():
+    """Launch the actual installed Spotify Windows application."""
+
+    try:
+        target = find_spotify_desktop()
+
+        if target == "RUNNING":
+            return True, "Spotify desktop application is already running."
+
+        if target is None:
+            return False, (
+                "I couldn't find the Spotify desktop application. "
+                "Please install Spotify for Windows."
+            )
+
+        if target.lower().endswith(".lnk"):
+            os.startfile(target)
+
+        elif target.lower().endswith(".exe"):
+            subprocess.Popen([target])
+
+        else:
+            return False, "Spotify desktop application path is invalid."
+
+        print("[Spotify] Desktop application launched.")
+
+        # Give Spotify time to create its window.
+        for _ in range(15):
+            time.sleep(1)
+
+            try:
+                window = jarvis_spotify.find_spotify_window()
+
+                if window:
+                    return True, "Spotify desktop application opened."
+
+            except Exception:
+                pass
+
+        return True, (
+            "Spotify desktop launch command submitted. "
+            "Please check whether its window appeared."
+        )
+
+    except Exception as e:
+        print("[Spotify Desktop Error]:", repr(e))
+        return False, f"Could not launch Spotify desktop: {e}"
+
+
 def launch_app(name):
-    """Launch an application."""
+    """Launch a Windows application."""
+
     name = name.lower().strip()
     target = ALIASES.get(name, name)
 
     try:
+        # Spotify must always use its desktop application.
+        if name == "spotify":
+            success, message = launch_spotify_desktop()
+            return success
+
         if target.endswith(":"):
             os.startfile(target)
             return True
@@ -159,12 +261,13 @@ def launch_app(name):
         return False
 
 
+# ============================================================
+# WINDOWS MEDIA AND VOLUME CONTROLS
+# ============================================================
+
 def media_control(action):
-    """
-    Send Windows multimedia keys.
-    These may control whichever media player currently owns
-    the active Windows media session.
-    """
+    """Send Windows multimedia keys."""
+
     keys = {
         "play_pause": 0xB3,
         "next": 0xB0,
@@ -187,6 +290,7 @@ def media_control(action):
 
 def change_volume(action):
     """Control Windows system volume."""
+
     keys = {
         "up": 0xAF,
         "down": 0xAE,
@@ -205,20 +309,24 @@ def change_volume(action):
 
 
 def spotify_search(query):
-    """Legacy Spotify browser search."""
+    """Legacy Spotify browser search. Not used for desktop commands."""
+
     url = (
         "https://open.spotify.com/search/"
         + urllib.parse.quote(query)
     )
+
     return _open([url])
 
 
 def youtube_search(query):
     """Open YouTube search results."""
+
     url = (
         "https://www.youtube.com/results?search_query="
         + urllib.parse.quote(query)
     )
+
     return _open([url])
 
 
@@ -235,7 +343,6 @@ def find_whatsapp_window():
         if window.title and window.title.strip()
     ]
 
-    # Prefer WhatsApp itself.
     whatsapp_windows = [
         window for window in windows
         if "whatsapp" in window.title.lower()
@@ -244,8 +351,6 @@ def find_whatsapp_window():
     if whatsapp_windows:
         return whatsapp_windows[0]
 
-    # Otherwise find Edge. Remove invisible characters
-    # that can appear in browser window titles.
     edge_windows = [
         window for window in windows
         if "edge" in window.title.replace("\u200b", "").lower()
@@ -261,7 +366,7 @@ def find_whatsapp_window():
 
 
 def activate_whatsapp_window():
-    """Activate and maximize the WhatsApp browser window."""
+    """Activate and maximize WhatsApp browser window."""
 
     try:
         window = find_whatsapp_window()
@@ -279,7 +384,6 @@ def activate_whatsapp_window():
         window.maximize()
         time.sleep(1)
 
-        # Focus the browser page.
         pyautogui.click(
             window.left + int(window.width * 0.60),
             window.top + int(window.height * 0.45)
@@ -294,7 +398,7 @@ def activate_whatsapp_window():
 
 
 def focus_whatsapp_composer():
-    """Bring the browser forward and focus the message box."""
+    """Focus the WhatsApp message box."""
 
     try:
         success, result = activate_whatsapp_window()
@@ -307,7 +411,6 @@ def focus_whatsapp_composer():
         if window is None:
             return False, "WhatsApp browser window not found."
 
-        # Click near the bottom of the conversation.
         x = window.left + int(window.width * 0.55)
         y = window.top + window.height - 85
 
@@ -321,7 +424,7 @@ def focus_whatsapp_composer():
 
 
 def copy_to_clipboard(message):
-    """Copy exact text to the Windows clipboard."""
+    """Copy exact text to Windows clipboard."""
 
     root = tk.Tk()
     root.withdraw()
@@ -335,13 +438,11 @@ def copy_to_clipboard(message):
         root.destroy()
 
 
-def send_whatsapp_message(contact_name, message="Hello from Jarvis"):
-    """
-    Open WhatsApp, search for a contact and attempt to
-    open the first matching chat.
-
-    The message is NOT sent here.
-    """
+def send_whatsapp_message(
+    contact_name,
+    message="Hello from Jarvis"
+):
+    """Search for a WhatsApp contact without sending a message."""
 
     global _PENDING_WHATSAPP
 
@@ -357,7 +458,6 @@ def send_whatsapp_message(contact_name, message="Hello from Jarvis"):
         return "I couldn't open WhatsApp Web."
 
     try:
-        # Wait for WhatsApp Web to load.
         time.sleep(8)
 
         success, result = activate_whatsapp_window()
@@ -365,20 +465,16 @@ def send_whatsapp_message(contact_name, message="Hello from Jarvis"):
         if not success:
             return result
 
-        # Open WhatsApp's New Chat panel.
         pyautogui.hotkey("ctrl", "alt", "n")
         time.sleep(2)
 
-        # Search for the contact.
         copy_to_clipboard(contact_name)
         pyautogui.hotkey("ctrl", "v")
         time.sleep(3)
 
-        # Attempt to open the first matching result.
         pyautogui.press("enter")
         time.sleep(3)
 
-        # Save the message for the confirmation process.
         _PENDING_WHATSAPP = {
             "contact": contact_name,
             "message": message,
@@ -399,10 +495,7 @@ def send_whatsapp_message(contact_name, message="Hello from Jarvis"):
 
 
 def handle_whatsapp_followup(command):
-    """
-    Handle contact verification, message preparation,
-    confirmation and cancellation.
-    """
+    """Handle contact verification, message preparation and confirmation."""
 
     global _PENDING_WHATSAPP
 
@@ -410,10 +503,6 @@ def handle_whatsapp_followup(command):
         return None
 
     command = command.lower().strip(" .,!?")
-
-    # --------------------------------------------------------
-    # CANCEL MESSAGE
-    # --------------------------------------------------------
 
     cancel_commands = {
         "no",
@@ -437,10 +526,6 @@ def handle_whatsapp_followup(command):
         )
 
     stage = _PENDING_WHATSAPP["stage"]
-
-    # --------------------------------------------------------
-    # CONTACT VERIFICATION
-    # --------------------------------------------------------
 
     if command in (
         "chat ready",
@@ -482,10 +567,6 @@ def handle_whatsapp_followup(command):
         except Exception as e:
             return f"Could not prepare the message: {e}"
 
-    # --------------------------------------------------------
-    # SEND CONFIRMATION
-    # --------------------------------------------------------
-
     send_commands = {
         "yes",
         "yes send",
@@ -510,7 +591,6 @@ def handle_whatsapp_followup(command):
             return result
 
         try:
-            # Only explicit confirmation reaches this line.
             pyautogui.press("enter")
             time.sleep(0.5)
 
@@ -524,10 +604,6 @@ def handle_whatsapp_followup(command):
 
         except Exception as e:
             return f"Sending failed: {e}"
-
-    # --------------------------------------------------------
-    # OTHER COMMANDS WHILE A MESSAGE IS PENDING
-    # --------------------------------------------------------
 
     if stage == "awaiting_contact":
         return (
@@ -544,8 +620,12 @@ def handle_whatsapp_followup(command):
     return None
 
 
+# ============================================================
+# EMAIL BRIEFING
+# ============================================================
+
 def get_mail_brief():
-    """Read a locally saved mail cache if available."""
+    """Read locally saved mail cache."""
 
     cache_file = os.path.expanduser(
         "~/.openjarvis/mail_cache.txt"
@@ -571,11 +651,12 @@ def get_mail_brief():
     )
 
 
+# ============================================================
+# MAIN ACTION HANDLER
+# ============================================================
+
 def try_action(q):
-    """
-    Executes local actions.
-    Returns a response if handled, otherwise None.
-    """
+    """Execute local actions. Return None if not handled."""
 
     if not isinstance(q, str):
         return None
@@ -584,8 +665,7 @@ def try_action(q):
     q_clean = original_q.lower().strip(" .,!?")
 
     # ========================================================
-    # WHATSAPP COMMANDS
-    # These must run BEFORE YouTube and Spotify.
+    # WHATSAPP
     # ========================================================
 
     whatsapp_response = handle_whatsapp_followup(q_clean)
@@ -617,20 +697,15 @@ def try_action(q):
         return "Opening WhatsApp."
 
     # ========================================================
-    # YOUTUBE COMMANDS
-    # EXISTING WORKING CODE — PRESERVED
+    # YOUTUBE — EXISTING WORKING CODE PRESERVED
     # ========================================================
 
-    # YouTube commands are checked BEFORE Spotify so they are never
-    # accidentally interpreted as Spotify commands.
     if "youtube" in q_clean or "you tube" in q_clean:
 
-        # Stop has priority over the other controls. Stop pauses the video.
         if re.search(r"\b(stop|halt)\b", q_clean):
             success, message = jarvis_youtube.stop()
             return message
 
-        # Speech recognition sometimes hears "pass" instead of "pause".
         if re.search(r"\b(pause|pass)\b", q_clean):
             success, message = jarvis_youtube.pause()
             return message
@@ -647,9 +722,6 @@ def try_action(q):
             success, message = jarvis_youtube.resume()
             return message
 
-        # Supports both "play Dynamite on YouTube" and
-        # "open YouTube and play Dynamite". ASR may join "and play"
-        # into "andplay", so that spelling is accepted too.
         match = re.search(
             r"(?:\band\s*play|\bandplay|\bplay)\s+(.+?)\s*$",
             original_q,
@@ -658,6 +730,7 @@ def try_action(q):
 
         if match:
             query = match.group(1).strip()
+
             query = re.sub(
                 r"\s+(?:on|in)\s+(?:you\s*tube|youtube)$",
                 "",
@@ -669,12 +742,12 @@ def try_action(q):
                 success, message = jarvis_youtube.play(query)
                 return message
 
-        # Search without automatically selecting a result.
         search_match = re.search(
             r"(?:search|find)\s+(.+?)(?:\s+(?:on|in)\s+(?:you\s*tube|youtube))?$",
             original_q,
             re.IGNORECASE
         )
+
         if search_match:
             query = search_match.group(1).strip(" .,!? ")
             youtube_search(query)
@@ -684,12 +757,9 @@ def try_action(q):
         return "Opening YouTube."
 
     # ========================================================
-    # SPOTIFY COMMANDS
-    # EXISTING WORKING CODE — PRESERVED
+    # SPOTIFY — DESKTOP APPLICATION ONLY
     # ========================================================
 
-    # 1. Spotify desktop automation.
-    # This must be checked before the old browser-search code.
     spotify_command = re.sub(
         r"^\s*jarvis[\s,:-]*",
         "",
@@ -704,90 +774,68 @@ def try_action(q):
         flags=re.IGNORECASE
     ).strip()
 
-    try:
-        spotify_result = jarvis_spotify.handle(spotify_command)
+    # Detect explicit Spotify commands and the favourite album.
+    spotify_requested = (
+        "spotify" in q_clean
+        or "arirang" in q_clean
+        or "favourite album" in q_clean
+        or "favorite album" in q_clean
+    )
 
-        # Handle (True, message) or (False, message).
-        if isinstance(spotify_result, tuple):
-            handled = bool(spotify_result[0])
-            response = (
-                str(spotify_result[1])
-                if len(spotify_result) > 1
-                else "Spotify command processed."
-            )
+    if spotify_requested:
 
-            if handled:
+        # Opening Spotify means opening the installed desktop app.
+        if q_clean in (
+            "spotify",
+            "open spotify",
+            "launch spotify",
+            "start spotify"
+        ):
+            success, message = launch_spotify_desktop()
+            return message
+
+        # Start the desktop application before running automation.
+        # This allows jarvis_spotify.py to find the existing window
+        # instead of activating the spotify: browser protocol.
+        success, launch_message = launch_spotify_desktop()
+
+        if not success:
+            return launch_message
+
+        try:
+            spotify_result = jarvis_spotify.handle(spotify_command)
+
+            if isinstance(spotify_result, tuple):
+                handled = bool(spotify_result[0])
+
+                response = (
+                    str(spotify_result[1])
+                    if len(spotify_result) > 1
+                    else "Spotify command processed."
+                )
+
+                if handled:
+                    return response
+
                 return response
 
-        elif spotify_result is not None:
-            return spotify_result
+            if spotify_result is not None:
+                return spotify_result
 
-    except Exception as e:
-        print("[Spotify Automation Error]:", e)
-        return "I encountered an error while controlling Spotify."
-
-    # Legacy Spotify handling if the desktop handler does not
-    # recognise the command.
-    if "spotify" in q_clean:
-
-        if any(word in q_clean for word in (
-            "favourite", "favorite", "arirang", "bts album"
-        )):
-            _open([FAVOURITE_ALBUM_URL])
-            return "Opening your favourite BTS ARIRANG album on Spotify."
-
-        if any(word in q_clean for word in (
-            "pause", "resume", "continue", "play music",
-            "start music", "stop music", "next song",
-            "skip song", "previous song", "last song"
-        )):
-            if any(word in q_clean for word in ("next", "skip")):
-                action = "next"
-                message = "Skipping to the next track."
-
-            elif any(word in q_clean for word in (
-                "previous", "last song"
-            )):
-                action = "previous"
-                message = "Going to the previous track."
-
-            else:
-                action = "play_pause"
-                message = "Toggling Spotify playback."
-
-            if media_control(action):
-                return message
-
-            return "I couldn't control media playback."
-
-        match = re.search(
-            r"(?:play|search|find|open)\s+(.+?)"
-            r"(?:\s+(?:on|in)\s+spotify)?$",
-            q_clean
-        )
-
-        if match:
-            query = match.group(1).strip()
-
-            if query in ("spotify", "music"):
-                launch_app("spotify")
-                return "Opening Spotify."
-
-            spotify_search(query)
+        except Exception as e:
+            print("[Spotify Automation Error]:", repr(e))
             return (
-                f"Searching Spotify for {query}. "
-                "Select the song or playlist to start playback."
+                "Spotify desktop opened, but I encountered "
+                "an error while controlling playback."
             )
 
-        if q_clean in ("spotify", "open spotify", "launch spotify"):
-            launch_app("spotify")
-            return "Opening Spotify."
-
-        launch_app("spotify")
-        return "Opening Spotify."
+        return (
+            "Spotify desktop opened, but I couldn't "
+            "understand the Spotify command."
+        )
 
     # ========================================================
-    # STOCK MARKET COMMANDS
+    # STOCK MARKET
     # ========================================================
 
     if any(k in q_clean for k in (
@@ -795,6 +843,7 @@ def try_action(q):
         "crypto", "bitcoin", "buy or sell"
     )):
         for sym, name in jarvis_market.DEFAULT_TICKERS.items():
+
             if (
                 name.lower() in q_clean
                 or sym.lower().replace(".ns", "") in q_clean
@@ -820,7 +869,7 @@ def try_action(q):
         )
 
     # ========================================================
-    # MAIL BRIEFING
+    # EMAIL
     # ========================================================
 
     if any(k in q_clean for k in (
@@ -874,7 +923,7 @@ def try_action(q):
         )
 
     # ========================================================
-    # WINDOWS VOLUME CONTROLS
+    # WINDOWS VOLUME
     # ========================================================
 
     if "volume up" in q_clean or "louder" in q_clean:

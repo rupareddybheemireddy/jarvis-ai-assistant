@@ -3,7 +3,7 @@ import json
 import math
 import threading
 import time
-import webbrowser
+import webview
 from array import array
 from collections import deque
 from datetime import datetime
@@ -357,6 +357,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
         print("[JARVIS WEB]", format % args)
 
 
+
 def main():
 
     if not HTML_FILE.exists():
@@ -368,33 +369,47 @@ def main():
         JarvisHandler
     )
 
+    server_thread = threading.Thread(
+        target=server.serve_forever,
+        daemon=True
+    )
+
     voice_thread = threading.Thread(
         target=voice_worker,
         daemon=True
     )
 
     print("=" * 50)
-    print("       JARVIS AI WORKPLACE")
+    print("       JARVIS AI DESKTOP APPLICATION")
     print("=" * 50)
-    print(f"Interface: http://{HOST}:{PORT}")
+    print("Starting local interface...")
     print("Starting microphone and voice system...")
-    print("Press CTRL+C to stop Jarvis.")
     print("=" * 50)
-
-    voice_thread.start()
-
-    webbrowser.open(f"http://{HOST}:{PORT}")
 
     try:
-        server.serve_forever()
+        server_thread.start()
+        voice_thread.start()
 
-    except KeyboardInterrupt:
-        print("\nStopping Jarvis...")
+        webview.create_window(
+            "JARVIS - AI Personal Assistant",
+            f"http://{HOST}:{PORT}",
+            width=1440,
+            height=900,
+            min_size=(1000, 650),
+            background_color="#010408"
+        )
+
+        webview.start()
+
+    except Exception as e:
+        print("JARVIS desktop application error:", repr(e))
 
     finally:
+        print("Shutting down JARVIS...")
         STOP_EVENT.set()
+        server.shutdown()
         server.server_close()
-        print("Jarvis interface stopped.")
+        print("JARVIS closed.")
 
 
 if __name__ == "__main__":
